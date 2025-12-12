@@ -42,7 +42,7 @@ export function useSimulatedProgress(isLoading: boolean) {
         }
         return prev;
       });
-    }, 1500);
+    }, 800); // Faster intervals (800ms) for snappier UX
 
     return () => clearInterval(interval);
   }, [isLoading]);

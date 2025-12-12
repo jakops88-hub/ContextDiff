@@ -154,14 +154,14 @@ class DiffEngine:
             return response
         
         # Check if texts are large enough to warrant chunking
-        CHUNK_THRESHOLD = 4000  # Characters
+        CHUNK_THRESHOLD = 800  # Maximum parallelization
         original_length = len(request.original_text)
         generated_length = len(request.generated_text)
         
         if original_length > CHUNK_THRESHOLD or generated_length > CHUNK_THRESHOLD:
             logger.info(
                 f"Large texts detected (orig: {original_length}, gen: {generated_length}). "
-                f"Using parallel chunking strategy."
+                f"Using parallel chunking with smart filtering."
             )
             return await self._analyze_with_chunking(request, selected_model)
         
@@ -186,12 +186,36 @@ class DiffEngine:
             
             logger.debug(f"Raw LLM response: {raw_content[:500]}...")
             
-            # Parse JSON
+            # Parse JSON with fallback repair for truncated responses
             try:
                 response_data = json.loads(raw_content)
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM JSON response: {e}")
-                raise LLMResponseError(f"Invalid JSON from LLM: {e}")
+                logger.warning(f"Initial JSON parse failed: {e}. Attempting repair...")
+                
+                # Attempt to repair truncated JSON by closing unclosed structures
+                repaired_content = raw_content
+                if not repaired_content.rstrip().endswith('}'):
+                    # Count unclosed braces/brackets
+                    open_braces = repaired_content.count('{') - repaired_content.count('}')
+                    open_brackets = repaired_content.count('[') - repaired_content.count(']')
+                    open_quotes = repaired_content.count('"') % 2
+                    
+                    # Close any open quotes first
+                    if open_quotes == 1:
+                        repaired_content += '"'
+                    
+                    # Close arrays then objects
+                    repaired_content += ']' * open_brackets
+                    repaired_content += '}' * open_braces
+                    
+                    logger.info(f"Repaired JSON by adding {open_quotes} quotes, {open_brackets} brackets, {open_braces} braces")
+                
+                try:
+                    response_data = json.loads(repaired_content)
+                    logger.info("Successfully repaired and parsed truncated JSON")
+                except json.JSONDecodeError as e2:
+                    logger.error(f"Failed to parse even after repair: {e2}")
+                    raise LLMResponseError(f"Invalid JSON from LLM: {e}")
             
             # Validate and fix spans before building response
             response_data = self._validate_and_fix_spans(
@@ -240,8 +264,8 @@ class DiffEngine:
             raise LLMAPIError(f"Unexpected error: {str(e)}")
     
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=5),
         retry=retry_if_exception_type((APITimeoutError, RateLimitError, APIError)),
         reraise=True
     )
@@ -320,10 +344,21 @@ class DiffEngine:
         
         logger.info(f"Split texts into {max_chunks} chunks for parallel processing")
         
-        # Create tasks for parallel execution
+        # SMART FILTERING: Skip identical/near-identical chunks (MASSIVE SPEED BOOST)
         tasks = []
+        skipped_identical = 0
         for i, (orig_chunk, gen_chunk) in enumerate(zip(original_chunks, generated_chunks)):
-            if not orig_chunk and not gen_chunk:
+            # Skip if either chunk is empty (CompareRequest requires min 1 char)
+            if not orig_chunk or not gen_chunk:
+                logger.debug(f"Skipping chunk {i}: one or both texts empty")
+                skipped_identical += 1
+                continue
+            
+            # Quick similarity check - skip if >90% identical
+            similarity = difflib.SequenceMatcher(None, orig_chunk, gen_chunk).ratio()
+            if similarity > 0.90:
+                logger.debug(f"Skipping chunk {i}: {similarity:.1%} identical")
+                skipped_identical += 1
                 continue
             
             chunk_request = CompareRequest(
@@ -335,7 +370,10 @@ class DiffEngine:
             tasks.append(self._analyze_single_chunk(chunk_request, chunk_index=i, model=model))
         
         # Execute in parallel
-        logger.info(f"Executing {len(tasks)} chunk analyses in parallel")
+        logger.info(
+            f"Executing {len(tasks)} chunk analyses in parallel "
+            f"(skipped {skipped_identical} identical chunks for speed)"
+        )
         chunk_results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Merge results
@@ -356,7 +394,7 @@ class DiffEngine:
         
         return merged_response
     
-    def _split_into_chunks(self, text: str, max_chunk_size: int = 3000) -> List[str]:
+    def _split_into_chunks(self, text: str, max_chunk_size: int = 800) -> List[str]:
         """
         Split text into chunks based on paragraph boundaries.
         
@@ -481,37 +519,31 @@ class DiffEngine:
         """
         Merge multiple chunk results into single response.
         
+        CRITICAL: Since chunks are processed independently, their span indices
+        are relative to the chunk text. We DON'T adjust indices because:
+        1. Chunking splits at paragraph boundaries, losing position context
+        2. Adjusting indices would cause misalignment with actual full text
+        3. Frontend should use span.text for highlighting, not indices
+        
         Args:
             chunk_results: List of DiffResponse objects from chunks.
-            original_chunks: Original text chunks (for offset calculation).
+            original_chunks: Original text chunks (not used for offsets).
             
         Returns:
-            Merged DiffResponse.
+            Merged DiffResponse with all changes (indices are chunk-relative).
         """
         all_changes = []
         total_risk_score = 0
         max_change_level = SemanticChangeLevel.NONE
         
-        # Calculate offsets for each chunk
-        offsets = [0]
-        for chunk in original_chunks[:-1]:
-            offsets.append(offsets[-1] + len(chunk) + 2)  # +2 for \n\n
-        
-        # Merge changes and adjust indices
+        # Merge changes WITHOUT adjusting indices (they stay chunk-relative)
         for chunk_idx, result in enumerate(chunk_results):
             if isinstance(result, Exception):
                 logger.warning(f"Chunk {chunk_idx} failed: {result}")
                 continue
             
-            offset = offsets[chunk_idx] if chunk_idx < len(offsets) else 0
-            
-            # Adjust span indices for global position
-            for change in result.changes:
-                change.original_span.start += offset
-                change.original_span.end += offset
-                change.generated_span.start += offset
-                change.generated_span.end += offset
-                all_changes.append(change)
+            # Add changes as-is (no offset adjustment)
+            all_changes.extend(result.changes)
             
             # Aggregate risk
             total_risk_score += result.summary.risk_score
@@ -527,6 +559,8 @@ class DiffEngine:
         # Determine safety
         has_critical = any(c.severity == "critical" for c in all_changes)
         is_safe = avg_risk_score <= 40 and not has_critical
+        
+        logger.info(f"Merged {len(all_changes)} changes from {valid_chunks} chunks (no index adjustment)")
         
         return DiffResponse(
             summary=DiffSummary(
@@ -694,18 +728,27 @@ class DiffEngine:
             )
             return (True, True)  # Valid, corrected
         
-        # Phase 4: Global fallback (original simple find)
+        # Phase 4: Global fallback - ONLY if text appears exactly once (safe)
         global_index = source_text.find(text)
         if global_index != -1:
+            # Check if text appears multiple times (unsafe to use global fallback)
+            second_occurrence = source_text.find(text, global_index + 1)
+            if second_occurrence != -1:
+                logger.warning(
+                    f"{span_type} span text appears multiple times in source, "
+                    f"cannot safely use global fallback. Removing change."
+                )
+                return (False, False)  # Reject - too risky
+            
+            # Safe - text appears only once
             span["start"] = global_index
             span["end"] = global_index + len(text)
             
-            logger.warning(
-                f"Global fallback match for {span_type} span: "
-                f"[{start}:{end}] -> [{global_index}:{global_index + len(text)}] "
-                f"(may be wrong if text appears multiple times)"
+            logger.info(
+                f"Global fallback (safe - unique occurrence) for {span_type} span: "
+                f"[{start}:{end}] -> [{global_index}:{global_index + len(text)}]"
             )
-            return (True, True)  # Valid, corrected (but risky)
+            return (True, True)  # Valid, corrected (safe)
         
         # All phases failed - hallucination detected
         logger.warning(
@@ -728,11 +771,23 @@ class DiffEngine:
             LLMResponseError: If validation fails.
         """
         try:
-            # Ensure UUIDs are generated for changes if not provided
+            # Always generate proper UUIDs (LLM often returns invalid IDs like "1", "2", "3")
             if "changes" in response_data:
                 for change in response_data["changes"]:
-                    if "id" not in change or not change["id"]:
-                        change["id"] = str(uuid4())
+                    change["id"] = str(uuid4())  # Always override with real UUID
+                    
+                    # Auto-correct common severity mistakes from gpt-3.5-turbo
+                    if "severity" in change:
+                        severity_map = {
+                            "minor": "info",
+                            "low": "info",
+                            "medium": "warning",
+                            "moderate": "warning",
+                            "high": "critical",
+                            "major": "critical"
+                        }
+                        if change["severity"] in severity_map:
+                            change["severity"] = severity_map[change["severity"]]
             
             # Validate using Pydantic
             diff_response = DiffResponse(**response_data)

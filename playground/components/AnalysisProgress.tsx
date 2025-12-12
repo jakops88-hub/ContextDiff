@@ -21,7 +21,7 @@ export default function AnalysisProgress({
           Analyzing Differences
         </h3>
         <p className="text-sm text-zinc-600">
-          Our AI is working its magic. This takes 3-5 seconds...
+          Deep semantic analysis in progress...
         </p>
       </div>
 

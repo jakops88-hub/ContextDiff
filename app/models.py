@@ -5,9 +5,9 @@ All data structures for the ContextDiff API are defined here with strict typing.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 from uuid import UUID, uuid4
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 
 
 class SensitivityLevel(str, Enum):
@@ -50,8 +50,8 @@ class TextSpan(BaseModel):
         text: The actual text content.
         start: Start character position (0-indexed).
         end: End character position (exclusive).
-        context_before: Up to 5 characters before the span (for validation).
-        context_after: Up to 5 characters after the span (for validation).
+        context_before: Up to 30 characters before the span (for validation).
+        context_after: Up to 30 characters after the span (for validation).
     """
     text: str = Field(..., description="The text content of this span")
     start: int = Field(..., ge=0, description="Start position in the original text")
@@ -80,6 +80,36 @@ class ChangeItem(BaseModel):
         generated_span: Location and content in the generated text.
         reasoning: Detailed chain-of-thought explanation.
     """
+    
+    @model_validator(mode='before')
+    @classmethod
+    def normalize_fields(cls, values: Any) -> Any:
+        """Auto-correct LLM case errors and map severity values."""
+        if isinstance(values, dict):
+            # Uppercase type field (e.g., "Factual" -> "FACTUAL")
+            if values.get('type'):
+                values['type'] = values['type'].upper()
+            # Map and normalize severity field
+            if values.get('severity'):
+                severity_lower = values['severity'].lower().strip()
+                # Map LLM variations to valid enum values
+                severity_map = {
+                    'minor': 'info',
+                    'low': 'info',
+                    'none': 'info',
+                    'moderate': 'warning',
+                    'medium': 'warning',
+                    'high': 'critical',
+                    'fatal': 'critical',
+                    'severe': 'critical',
+                    # Already valid values
+                    'info': 'info',
+                    'warning': 'warning',
+                    'critical': 'critical',
+                }
+                values['severity'] = severity_map.get(severity_lower, 'warning')
+        return values
+    
     id: UUID = Field(default_factory=uuid4, description="Unique change identifier")
     type: ChangeType = Field(..., description="Category of semantic change")
     severity: ChangeSeverity = Field(..., description="Severity level of the change")

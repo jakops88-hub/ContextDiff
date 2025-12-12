@@ -31,16 +31,16 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     OPENAI_API_KEY: str
-    DEFAULT_LLM_MODEL: str = "gpt-4o-mini"  # Cost-optimized default
-    PREMIUM_LLM_MODEL: str = "gpt-4o"  # Premium model for premium_mode
+    DEFAULT_LLM_MODEL: str = "gpt-4o-mini"  # Balanced speed/quality
+    PREMIUM_LLM_MODEL: str = "gpt-4o"  # Best quality for premium
     OPENAI_MODEL: str = "gpt-4o-mini"  # Deprecated, use DEFAULT_LLM_MODEL
-    OPENAI_TEMPERATURE: float = 0.1
-    OPENAI_MAX_TOKENS: int = 4000
-    OPENAI_TIMEOUT: int = 60
+    OPENAI_TEMPERATURE: float = 0.0  # Deterministic for speed
+    OPENAI_MAX_TOKENS: int = 1500  # Prevent truncation, prompt enforces brevity
+    OPENAI_TIMEOUT: int = 25  # Fast timeout
     
     # Cost Protection
     MAX_TOTAL_CHARS: int = 15000  # Maximum combined text length
-    SHORT_CIRCUIT_THRESHOLD: float = 0.98  # Similarity threshold to skip LLM
+    SHORT_CIRCUIT_THRESHOLD: float = 0.96  # More aggressive skip (96% similarity)
     
     # API Configuration
     API_TITLE: str = "ContextDiff API"

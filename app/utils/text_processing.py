@@ -144,7 +144,7 @@ class TextSanitizer:
         text: str,
         start: int,
         end: int,
-        context_chars: int = 5
+        context_chars: int = 30
     ) -> tuple[str, str]:
         """
         Extract context before and after a text span.
