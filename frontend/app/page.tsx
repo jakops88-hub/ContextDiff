@@ -13,6 +13,14 @@ const EXAMPLE_ORIGINAL = `Our product will be available in Q4 2024. The new feat
 
 const EXAMPLE_GENERATED = `Our product might be available in Q4 2024. The new features include analytics, collaboration tools, and security features. Pricing information will be announced soon.`;
 
+// Demo limits
+const MAX_WORDS = 500;
+const MAX_CHARS_PER_TEXT = 3500; // Approximately 500 words
+
+const countWords = (text: string): number => {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+};
+
 export default function Home() {
   const [originalText, setOriginalText] = useState("");
   const [generatedText, setGeneratedText] = useState("");
@@ -26,6 +34,12 @@ export default function Home() {
 
   const { steps, currentStepIndex } = useSimulatedProgress(isLoading);
 
+  // Calculate word counts
+  const originalWordCount = countWords(originalText);
+  const generatedWordCount = countWords(generatedText);
+  const totalWords = originalWordCount + generatedWordCount;
+  const isOverLimit = totalWords > MAX_WORDS;
+
   const handlePasteExample = () => {
     setOriginalText(EXAMPLE_ORIGINAL);
     setGeneratedText(EXAMPLE_GENERATED);
@@ -36,6 +50,11 @@ export default function Home() {
   const handleAnalyze = async () => {
     if (!originalText.trim() || !generatedText.trim()) {
       setError("Please enter both original and generated text.");
+      return;
+    }
+
+    if (isOverLimit) {
+      setError(`Demo limit exceeded! Please keep total word count under ${MAX_WORDS} words. Current: ${totalWords} words.`);
       return;
     }
 
@@ -162,6 +181,20 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-6 py-12">
         {!result && !isLoading && (
           <>
+            {/* Demo Limit Notice */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-blue-900">Free Demo Limit</p>
+                  <p className="text-sm text-blue-700 mt-1">
+                    This playground demo is limited to <strong>{MAX_WORDS} words total</strong> (both texts combined). 
+                    For unlimited access and API integration, visit RapidAPI.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Input Stage */}
             <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm p-8 space-y-6">
               <div className="flex items-center justify-between mb-4">
@@ -191,7 +224,7 @@ export default function Home() {
                     className="w-full h-64 px-4 py-3 text-sm border-2 border-zinc-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none font-mono"
                   />
                   <p className="text-xs text-zinc-500">
-                    {originalText.length} characters
+                    {originalText.length} characters · {originalWordCount} words
                   </p>
                 </div>
 
@@ -207,9 +240,23 @@ export default function Home() {
                     className="w-full h-64 px-4 py-3 text-sm border-2 border-zinc-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none font-mono"
                   />
                   <p className="text-xs text-zinc-500">
-                    {generatedText.length} characters
+                    {generatedText.length} characters · {generatedWordCount} words
                   </p>
                 </div>
+              </div>
+
+              {/* Total Word Count */}
+              <div className="text-center">
+                <p className={`text-sm font-semibold ${
+                  isOverLimit 
+                    ? 'text-red-600' 
+                    : totalWords > MAX_WORDS * 0.8 
+                      ? 'text-amber-600' 
+                      : 'text-zinc-600'
+                }`}>
+                  Total: {totalWords} / {MAX_WORDS} words
+                  {isOverLimit && ' - Limit exceeded!'}
+                </p>
               </div>
 
               {/* CTA Button */}
@@ -217,7 +264,7 @@ export default function Home() {
                 <Button
                   size="lg"
                   onClick={handleAnalyze}
-                  disabled={!originalText.trim() || !generatedText.trim()}
+                  disabled={!originalText.trim() || !generatedText.trim() || isOverLimit}
                   className="text-base"
                 >
                   <Sparkles className="w-5 h-5" />
