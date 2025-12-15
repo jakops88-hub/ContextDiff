@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Sparkles, AlertCircle } from "lucide-react";
+import { Sparkles, AlertCircle, Zap } from "lucide-react";
 import { compareTexts, DiffResponse } from "@/lib/api";
 import { useSimulatedProgress } from "@/hooks/useSimulatedProgress";
 import AnalysisProgress from "@/components/AnalysisProgress";
@@ -140,6 +140,20 @@ export default function Home() {
               semantic analysis to highlight factual changes, tonal shifts, and
               critical omissions. Try the demo below.
             </p>
+            
+            {/* RapidAPI CTA Button */}
+            <div className="pt-4">
+              <a
+                href="https://rapidapi.com/jakops88/api/contextdiff"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+              >
+                <Zap className="w-5 h-5" />
+                <span>Get API Access on RapidAPI</span>
+                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">Free tier available</span>
+              </a>
+            </div>
           </div>
         </div>
       </header>
