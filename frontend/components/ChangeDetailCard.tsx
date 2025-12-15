@@ -52,16 +52,15 @@ function getSeverityColor(severity: string): string {
 export default function ChangeDetailCard({ change, onClose }: ChangeDetailCardProps) {
   const [copyStatus, setCopyStatus] = React.useState<'idle' | 'json' | 'md'>('idle');
   
-  if (!change) return null;
-
   // Handle Escape key to close
   React.useEffect(() => {
+    if (!change) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
+  }, [change, onClose]);
 
   // Reset copy status after 2 seconds
   React.useEffect(() => {
@@ -70,6 +69,8 @@ export default function ChangeDetailCard({ change, onClose }: ChangeDetailCardPr
       return () => clearTimeout(timer);
     }
   }, [copyStatus]);
+
+  if (!change) return null;
 
   const handleCopyJSON = async () => {
     await navigator.clipboard.writeText(JSON.stringify(change, null, 2));

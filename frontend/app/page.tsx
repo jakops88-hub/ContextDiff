@@ -136,7 +136,7 @@ export default function Home() {
               See What Your AI Actually Changed.
             </p>
             <p className="text-sm text-zinc-500 max-w-2xl mx-auto">
-              Don't trust black-box text generation. ContextDiff uses advanced
+              Don&apos;t trust black-box text generation. ContextDiff uses advanced
               semantic analysis to highlight factual changes, tonal shifts, and
               critical omissions. Try the demo below.
             </p>
