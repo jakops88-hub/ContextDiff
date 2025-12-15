@@ -1,28 +1,58 @@
-# ContextDiff API
+# ContextDiff - Semantic Text Analysis Platform
 
-**Semantic Text Difference Analysis using AI**
+**AI-Powered Semantic Text Difference Analysis**
 
-A production-ready FastAPI backend that compares texts for semantic differences using LLM-powered analysis. Goes beyond simple string comparison to detect changes in meaning, tone, facts, and intent.
+A production-ready monorepo featuring a FastAPI backend and Next.js playground frontend that compares texts for semantic differences using LLM-powered analysis. Goes beyond simple string comparison to detect changes in meaning, tone, facts, and intent.
+
+## 📁 Monorepo Structure
+
+```
+ContextDiff/
+├── backend/          # FastAPI Python backend
+│   ├── app/          # Application modules
+│   ├── main.py       # API entry point
+│   ├── requirements.txt
+│   ├── Dockerfile    # Production Docker image
+│   └── .env.example
+├── frontend/         # Next.js playground (moved from /playground)
+│   ├── app/          # Next.js App Router pages
+│   ├── components/   # React components
+│   ├── lib/          # API clients and utilities
+│   ├── package.json
+│   └── next.config.mjs
+└── docs/            # Documentation
+```
 
 ## 🚀 Features
 
+### Backend API
 - **Semantic Analysis**: Detect factual changes, tone shifts, omissions, and additions
 - **Configurable Sensitivity**: Low, Medium, or High analysis modes
 - **Risk Scoring**: 0-100 risk assessment with safety determination
 - **Detailed Change Detection**: Precise character-level spans with reasoning
+- **Performance Optimized**: Chunking (800 char), parallel processing, caching (1hr TTL)
 - **Production Ready**: Strict typing, robust error handling, async operations
-- **OpenAPI Documentation**: Auto-generated interactive API docs
+- **OpenAPI Documentation**: Auto-generated interactive API docs at `/docs`
+
+### Frontend Playground
+- **Interactive UI**: Modern Next.js 14 with Tailwind CSS and Shadcn UI
+- **Real-time Analysis**: Progress tracking with live streaming effects
+- **Context-Aware Highlighting**: 3-strategy matching with overlap detection
+- **Inspector Panel**: Click-to-inspect detailed change analysis
+- **Enterprise Features**: Copy JSON, Export MD, confidence badges, severity breakdown
+- **Responsive Layout**: Dynamic 4-4-4 grid with toast notifications
 
 ## 📋 Requirements
 
-- Python 3.10+
-- OpenAI API key
+- **Backend**: Python 3.11+, OpenAI API key
+- **Frontend**: Node.js 18+, npm/pnpm
+- **Deployment**: Docker (Koyeb), Vercel
 
-## 🛠️ Installation
+## 🛠️ Backend Setup
 
-1. **Clone and navigate to the project:**
+1. **Navigate to backend:**
    ```powershell
-   cd c:\Dev\ContextDiff
+   cd c:\Dev\ContextDiff\backend
    ```
 
 2. **Create and activate a virtual environment:**
@@ -45,10 +75,11 @@ A production-ready FastAPI backend that compares texts for semantic differences 
    OPENAI_API_KEY=sk-your-actual-api-key-here
    ```
 
-## 🚀 Running the API
+## 🚀 Running Backend Locally
 
-**Start the server:**
+**Start the FastAPI server:**
 ```powershell
+cd backend
 python main.py
 ```
 
@@ -61,6 +92,76 @@ The API will be available at:
 - **API Endpoint**: http://localhost:8000
 - **Interactive Docs**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
+
+## 🎨 Frontend Setup
+
+1. **Navigate to frontend:**
+   ```powershell
+   cd c:\Dev\ContextDiff\frontend
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   # or
+   pnpm install
+   ```
+
+3. **Set up environment variables:**
+   ```bash
+   cp .env.local.example .env.local
+   ```
+   Edit `.env.local`:
+   ```
+   NEXT_PUBLIC_API_URL=http://localhost:8000
+   ```
+
+## 🚀 Running Frontend Locally
+
+**Start the Next.js development server:**
+```bash
+npm run dev
+# or
+pnpm dev
+```
+
+The playground will be available at: **http://localhost:3000**
+
+## 🐳 Docker Deployment (Backend)
+
+### Build the Docker image:
+```bash
+cd backend
+docker build -t contextdiff-api .
+```
+
+### Run the container:
+```bash
+docker run -p 8000:8000 -e OPENAI_API_KEY=your-key contextdiff-api
+```
+
+### Deploy to Koyeb:
+1. Push backend code to GitHub
+2. Create new app on Koyeb
+3. Connect GitHub repository
+4. Set Docker build context to `/backend`
+5. Add environment variable: `OPENAI_API_KEY`
+6. Deploy
+
+## ☁️ Vercel Deployment (Frontend)
+
+### Deploy frontend to Vercel:
+```bash
+cd frontend
+vercel
+```
+
+Or via Vercel dashboard:
+1. Import repository
+2. Set root directory to `frontend`
+3. Framework preset: Next.js
+4. Add environment variable: `NEXT_PUBLIC_API_URL`
+5. Deploy
 
 ## 📖 API Usage
 
