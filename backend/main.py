@@ -30,6 +30,59 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def verify_api_access(request: Request) -> None:
+    """
+    Security dependency to verify API access.
+    
+    Allows access if:
+    1. X-API-SECRET header matches API_SECRET env var (for RapidAPI), OR
+    2. Request origin is in ALLOWED_ORIGINS (for trusted frontends)
+    
+    Args:
+        request: FastAPI Request object
+        
+    Raises:
+        HTTPException: 403 Forbidden if authentication fails
+    """
+    # If no API_SECRET is configured, allow all access (local dev)
+    if not settings.API_SECRET:
+        return
+    
+    # Check 1: Verify X-API-SECRET header (RapidAPI)
+    api_secret = request.headers.get("X-API-SECRET")
+    if api_secret == settings.API_SECRET:
+        logger.info("Access granted via X-API-SECRET header")
+        return
+    
+    # Check 2: Verify Origin header (Trusted frontends)
+    origin = request.headers.get("origin") or request.headers.get("referer", "")
+    if origin:
+        # Extract base origin (remove path)
+        base_origin = origin.split("//")[-1].split("/")[0]
+        
+        # Check against allowed origins
+        for allowed in settings.ALLOW_ORIGINS:
+            if allowed == "*":
+                logger.info(f"Access granted via wildcard origin: {origin}")
+                return
+            # Remove protocol from allowed origin for comparison
+            allowed_base = allowed.replace("https://", "").replace("http://", "").split("/")[0]
+            if base_origin == allowed_base or allowed_base in base_origin:
+                logger.info(f"Access granted via allowed origin: {origin}")
+                return
+    
+    # Access denied
+    logger.warning(
+        f"Access denied - No valid authentication. "
+        f"API Secret: {'Present' if api_secret else 'Missing'}, "
+        f"Origin: {origin or 'Missing'}"
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Access denied. Valid X-API-SECRET header or trusted origin required."
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
@@ -186,8 +239,9 @@ async def health_check() -> HealthResponse:
     }
 )
 async def compare_texts(
-    request: CompareRequest,
-    diff_engine: DiffEngine = Depends(get_diff_engine)
+    request_body: CompareRequest,
+    diff_engine: DiffEngine = Depends(get_diff_engine),
+    _: None = Depends(verify_api_access)
 ) -> DiffResponse:
     """
     Compare two texts for semantic differences.
@@ -205,15 +259,15 @@ async def compare_texts(
     start_time = time.time()
     
     logger.info(
-        f"Received compare request: sensitivity={request.sensitivity.value}, "
-        f"premium_mode={request.premium_mode}, "
-        f"original_length={len(request.original_text)}, "
-        f"generated_length={len(request.generated_text)}"
+        f"Received compare request: sensitivity={request_body.sensitivity.value}, "
+        f"premium_mode={request_body.premium_mode}, "
+        f"original_length={len(request_body.original_text)}, "
+        f"generated_length={len(request_body.generated_text)}"
     )
     
     # Cost optimization: Enforce MAX_TOTAL_CHARS for free tier
-    total_chars = len(request.original_text) + len(request.generated_text)
-    if not request.premium_mode and total_chars > settings.MAX_TOTAL_CHARS:
+    total_chars = len(request_body.original_text) + len(request_body.generated_text)
+    if not request_body.premium_mode and total_chars > settings.MAX_TOTAL_CHARS:
         logger.warning(
             f"Free tier limit exceeded: {total_chars} chars (max {settings.MAX_TOTAL_CHARS}). "
             f"Use premium_mode=true for larger texts."
@@ -234,7 +288,7 @@ async def compare_texts(
     # Validate individual text length (absolute maximum: 20,000 characters per text)
     MAX_TEXT_LENGTH = 20000
     
-    for text_name, text_value in [("original_text", request.original_text), ("generated_text", request.generated_text)]:
+    for text_name, text_value in [("original_text", request_body.original_text), ("generated_text", request_body.generated_text)]:
         is_valid, error_msg = TextSanitizer.validate_length(text_value, MAX_TEXT_LENGTH)
         if not is_valid:
             logger.warning(f"Text length validation failed for {text_name}: {error_msg}")
@@ -249,21 +303,21 @@ async def compare_texts(
             )
     
     # Sanitize texts to ensure consistent encoding and indexing
-    original_sanitized = TextSanitizer.clean(request.original_text)
-    generated_sanitized = TextSanitizer.clean(request.generated_text)
+    original_sanitized = TextSanitizer.clean(request_body.original_text)
+    generated_sanitized = TextSanitizer.clean(request_body.generated_text)
     
     logger.debug(
         f"Text sanitization complete: "
-        f"original {len(request.original_text)} -> {len(original_sanitized)}, "
-        f"generated {len(request.generated_text)} -> {len(generated_sanitized)}"
+        f"original {len(request_body.original_text)} -> {len(original_sanitized)}, "
+        f"generated {len(request_body.generated_text)} -> {len(generated_sanitized)}"
     )
     
     # Create new request with sanitized texts
     sanitized_request = CompareRequest(
         original_text=original_sanitized,
         generated_text=generated_sanitized,
-        sensitivity=request.sensitivity,
-        premium_mode=request.premium_mode
+        sensitivity=request_body.sensitivity,
+        premium_mode=request_body.premium_mode
     )
     
     try:

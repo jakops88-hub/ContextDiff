@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     API_VERSION: str = "1.0.0"
     API_DESCRIPTION: str = "Semantic text difference analysis using AI"
     
+    # Security
+    API_SECRET: Optional[str] = None  # Secret for RapidAPI authentication
+    
     # CORS (Optional - for production you'd configure this properly)
     ALLOW_ORIGINS: list[str] = ["*"]
     
